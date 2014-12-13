@@ -75,7 +75,11 @@ func TestParser_ParseStatement(t *testing.T) {
 					&influxql.Dimension{Expr: &influxql.DurationLiteral{Val: 10 * time.Hour}},
 				},
 				Limit:     20,
-				Ascending: true,
+				OrderBy: &influxql.OrderBy{
+					Fields: influxql.OrderByFields{
+						&influxql.OrderByField{Name: "time", Ascending: true},
+					},
+				},
 			},
 		},
 
@@ -188,6 +192,7 @@ func TestParser_ParseStatement(t *testing.T) {
 		{s: `SELECT field X`, err: `found X, expected FROM at line 1, char 14`},
 		{s: `SELECT field FROM "series" WHERE X +;`, err: `found ;, expected identifier, string, number, bool at line 1, char 37`},
 		{s: `SELECT field FROM myseries GROUP`, err: `found EOF, expected BY at line 1, char 34`},
+		{s: `SELECT field FROM myseries GROUP BY 1`, err: `found NUMBER, expected IDENT, ASC, or DESC at line 1, char 34`},
 		{s: `SELECT field FROM myseries LIMIT`, err: `found EOF, expected number at line 1, char 34`},
 		{s: `SELECT field FROM myseries LIMIT 10.5`, err: `fractional parts not allowed in limit at line 1, char 34`},
 		{s: `SELECT field FROM myseries ORDER`, err: `found EOF, expected BY at line 1, char 34`},
@@ -346,6 +351,114 @@ func TestParser_ParseExpr(t *testing.T) {
 		}
 	}
 }
+
+// Test parsing an ORDER BY field.
+func TestParser_OrderByField(t *testing.T) {
+	var tests = []struct {
+		s     string
+		field *influxql.OrderByField
+		err   string
+	}{
+		// ASC (time is the implied field name)
+		{
+			s: `ASC`,
+			field: &influxql.OrderByField{Name: `time`, Ascending: true},
+			err: ``,
+		},
+
+		// DESC (time is the implied field name)
+		{
+			s: `DESC`,
+			field: &influxql.OrderByField{Name: `time`, Ascending: false},
+			err: ``,
+		},
+
+		// With just a field name (DESC implied)
+		{
+			s: `myfield`,
+			field: &influxql.OrderByField{Name: `myfield`, Ascending: false},
+			err: ``,
+		},
+
+		// With field name and ASC
+		{
+			s: `myfield ASC`,
+			field: &influxql.OrderByField{Name: `myfield`, Ascending: true},
+			err: ``,
+		},
+
+		// Field name with non ASC or DESC token following
+		{
+			s: `myfield LIMIT 10`,
+			field: &influxql.OrderByField{Name: `myfield`, Ascending: false},
+			err: ``,
+		},
+
+		// Field name followed by another field
+		{
+			s: `field1 ASC, field2`,
+			field: &influxql.OrderByField{Name: `field1`, Ascending: true},
+			err: ``,
+		},
+
+		// Quoted field name
+		{
+			s: `"1_fUnkd3Lic.Field-name.o-O" DESC,`,
+			field: &influxql.OrderByField{Name: `1_fUnkd3Lic.Field-name.o-O`, Ascending: false},
+			err: ``,
+		},
+
+		// errors
+		{s: `1`, field: nil, err: `found 1, expected identifier, ASC, or DESC at line 1, char 1`,},
+		{s: ` LIMIT`, field: nil, err: `found LIMIT, expected identifier, ASC, or DESC at line 1, char 2`,},
+		{s: ``, field: nil, err: `found EOF, expected identifier, ASC, or DESC at line 1, char 1`,},
+	}
+
+	for i, test := range tests {
+		field, err := influxql.NewParser(strings.NewReader(test.s)).ParseOrderByField()
+		if !reflect.DeepEqual(test.err, errstring(err)) {
+			t.Errorf("%d. %q: error mismatch:\n  exp=%s\n  got=%s\n\n", i, test.s, test.err, err)
+		} else if test.err == "" && !reflect.DeepEqual(test.field, field) {
+			t.Errorf("%d. %q\n\nexpr mismatch:\n\nexp=%#v\n\ngot=%#v\n\n", i, test.s, test.field, field)
+		}
+	}
+}
+
+func TestParser_ParseOrderByFields(t *testing.T) {
+	var tests = []struct {
+		s      string
+		fields influxql.OrderByFields
+		err    string
+	}{
+		// One field
+		{
+			s: `myfield`,
+			fields: influxql.OrderByFields{
+				&influxql.OrderByField{Name: `myfield`, Ascending: false},
+			},
+			err: ``,
+		},
+
+		// Multiple fields
+		{
+			s: `ASC, field1 DESC, field2`,
+			fields: influxql.OrderByFields{
+				&influxql.OrderByField{Name: `myfield`, Ascending: false},
+			},
+			err: ``,
+		},
+	}
+
+	for i, test := range tests {
+		field, err := influxql.NewParser(strings.NewReader(test.s)).ParseOrderByField()
+		if !reflect.DeepEqual(test.err, errstring(err)) {
+			t.Errorf("%d. %q: error mismatch:\n  exp=%s\n  got=%s\n\n", i, test.s, test.err, err)
+		} else if test.err == "" && !reflect.DeepEqual(test.fields, field) {
+			t.Errorf("%d. %q\n\nexpr mismatch:\n\nexp=%#v\n\ngot=%#v\n\n", i, test.s, test.fields, field)
+		}
+	}
+}
+
 
 // Ensure a time duration can be parsed.
 func TestParseDuration(t *testing.T) {

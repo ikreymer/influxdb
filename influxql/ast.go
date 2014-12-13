@@ -72,8 +72,10 @@ func (_ *DurationLiteral) node() {}
 func (_ *BinaryExpr) node()      {}
 func (_ *ParenExpr) node()       {}
 func (_ *Wildcard) node()        {}
+func (_ *OrderBy) node()         {}
+func (_ *OrderByField) node()    {}
 
-// Query represents a collection of order statements.
+// Query represents a collection of ordered statements.
 type Query struct {
 	Statements Statements
 }
@@ -84,7 +86,7 @@ func (q *Query) String() string { return q.Statements.String() }
 // Statements represents a list of statements.
 type Statements []Statement
 
-// String returns a string representation of the statements
+// String returns a string representation of the statements.
 func (a Statements) String() string {
 	var str []string
 	for _, stmt := range a {
@@ -134,6 +136,58 @@ func (_ *Series) source() {}
 func (_ *Join) source()   {}
 func (_ *Merge) source()  {}
 
+// Order represents one or more fields to sort by.
+type Order interface {
+	Node
+	order()
+}
+
+func (_ *OrderBy) order() {}
+
+// OrderBy represents an ORDER BY clause.
+type OrderBy struct {
+	// Ordered list of fields to sort by.
+	Fields OrderByFields
+}
+
+// String returns a string representation of an OrderBy
+func (o *OrderBy) String() string {
+	var buf bytes.Buffer
+	_, _ = buf.WriteString("ORDER BY ")
+	_, _ = buf.WriteString(o.Fields.String())
+	return buf.String()
+}
+
+// OrderByField represens one field in an ORDER BY clause.
+type OrderByField struct {
+	// Name of the field to sort by.
+	Name string
+
+	// Sort order.
+	Ascending bool
+}
+
+// String returns a string representation of an OrderByField
+func (obf *OrderByField) String() string {
+	var buf bytes.Buffer
+	_, _ = buf.WriteString(obf.Name)
+	_, _ = buf.WriteString(" ")
+	_, _ = buf.WriteString(strconv.FormatBool(obf.Ascending))
+	return buf.String()
+}
+
+// OrderByFields represents an ordered list of ORDER BY fields
+type OrderByFields []*OrderByField
+
+// String returns a string representation of an OrderByFields
+func (o OrderByFields) String() string {
+	fields := make([]string, 0, len(o))
+	for _, field := range o {
+		fields = append(fields, field.String())
+	}
+	return strings.Join(fields, ", ")
+}
+
 // SelectStatement represents a command for extracting data from the database.
 type SelectStatement struct {
 	// Expressions returned from the selection.
@@ -153,7 +207,7 @@ type SelectStatement struct {
 	Limit int
 
 	// Sort order.
-	Ascending bool
+	OrderBy Order
 }
 
 // String returns a string representation of the select statement.
@@ -174,8 +228,9 @@ func (s *SelectStatement) String() string {
 	if s.Limit > 0 {
 		_, _ = fmt.Fprintf(&buf, " LIMIT %d", s.Limit)
 	}
-	if s.Ascending {
-		_, _ = buf.WriteString(" ORDER BY ASC")
+	if s.OrderBy != nil {
+		_, _ = buf.WriteString(" ")
+		_, _ = buf.WriteString(s.OrderBy.String())
 	}
 	return buf.String()
 }
@@ -230,7 +285,7 @@ func (s *SelectStatement) Substatement(ref *VarRef) (*SelectStatement, error) {
 		Fields:     Fields{{Expr: ref}},
 		Dimensions: s.Dimensions,
 		Limit:      s.Limit,
-		Ascending:  s.Ascending,
+		OrderBy:    s.OrderBy,
 	}
 
 	// If there is only one series source then return it with the whole condition.

@@ -129,12 +129,12 @@ func (p *Parser) parseSelectStatement() (*SelectStatement, error) {
 	}
 	stmt.Limit = limit
 
-	// Parse ordering: "ORDER BY (ASC|DESC)".
-	ascending, err := p.parseOrderBy()
+	// Parse ordering: "ORDER BY FIELD+".
+	orderBy, err := p.ParseOrderBy()
 	if err != nil {
 		return nil, err
 	}
-	stmt.Ascending = ascending
+	stmt.OrderBy = orderBy
 
 	return stmt, nil
 }
@@ -468,26 +468,87 @@ func (p *Parser) parseLimit() (int, error) {
 	return int(n), nil
 }
 
-// parseOrderBy parses the "ORDER BY" clause of the query, if it exists.
-func (p *Parser) parseOrderBy() (bool, error) {
+// parseOrderBy parses the ORDER BY clause of the query, if it exists.
+func (p *Parser) ParseOrderBy() (Order, error) {
 	// Check if the ORDER token exists.
 	if tok, _, _ := p.scanIgnoreWhitespace(); tok != ORDER {
 		p.unscan()
-		return false, nil
+		return nil, nil
 	}
 
 	// Ensure the next token is BY.
 	if tok, pos, lit := p.scanIgnoreWhitespace(); tok != BY {
-		return false, newParseError(tokstr(tok, lit), []string{"BY"}, pos)
+		return nil, newParseError(tokstr(tok, lit), []string{"BY"}, pos)
 	}
 
-	// Ensure the next token is ASC OR DESC.
+	// Parse fields.
+	fields, err := p.ParseOrderByFields()
+	if err != nil {
+		return nil, err
+	}
+
+	return &OrderBy{Fields: fields,}, nil
+}
+
+// parserOrderByFields parses all fields of and ORDER BY clause.
+func (p *Parser) ParseOrderByFields() (OrderByFields, error) {
+	var fields OrderByFields
+
+	// At least one field is required.
+	field, err := p.ParseOrderByField()
+	if err != nil {
+		return nil, err
+	}
+	fields = append(fields, field)
+
+	// Parse additional ORDER BY fields.
+	for {
+		tok, _, _ := p.scanIgnoreWhitespace()
+		p.unscan()
+		
+		if tok != COMMA {
+			break
+		}
+
+		field, err := p.ParseOrderByField()
+		if err != nil {
+			return nil, err
+		}
+
+		fields = append(fields, field)
+	}
+
+	return fields, nil
+}
+
+// parseOrderByField parses one field of an ORDER By clause.
+func (p *Parser) ParseOrderByField() (*OrderByField, error) {
+	field := &OrderByField{}
+
+	// Next token should be ASC, DESC, or IDENT | STRING.
 	tok, pos, lit := p.scanIgnoreWhitespace()
-	if tok != ASC && tok != DESC {
-		return false, newParseError(tokstr(tok, lit), []string{"ASC", "DESC"}, pos)
+	if tok == IDENT || tok == STRING {
+		field.Name = lit
+		// Check for optional ASC or DESC token.
+		tok, pos, lit = p.scanIgnoreWhitespace()
+		if tok != ASC && tok != DESC {
+			p.unscan()
+			return field, nil
+		}
+	} else if tok != ASC && tok != DESC {
+		return nil, newParseError(tokstr(tok, lit), []string{"identifier, ASC, or DESC"}, pos)
 	}
 
-	return tok == ASC, nil
+	// No field name was specified, "time" is the default.
+	if field.Name == "" {
+		field.Name = "time"
+	}
+
+	if tok == ASC {
+		field.Ascending = true
+	}
+
+	return field, nil
 }
 
 // ParseExpr parses an expression.
