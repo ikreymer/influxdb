@@ -73,6 +73,7 @@ func (_ *BinaryExpr) node()      {}
 func (_ *ParenExpr) node()       {}
 func (_ *Wildcard) node()        {}
 func (_ *OrderBy) node()         {}
+func (_ OrderByFields) node()    {}
 func (_ *OrderByField) node()    {}
 
 // Query represents a collection of ordered statements.
@@ -401,6 +402,9 @@ type ListSeriesStatement struct{
 	// Maximum number of rows to be returned.
 	// Unlimited if zero.
 	Limit int
+
+	// Sort order.
+	OrderBy Order
 }
 
 // String returns a string representation of the list series statement.

@@ -443,18 +443,20 @@ func TestParser_ParseOrderByFields(t *testing.T) {
 		{
 			s: `ASC, field1 DESC, field2`,
 			fields: influxql.OrderByFields{
-				&influxql.OrderByField{Name: `myfield`, Ascending: false},
+				&influxql.OrderByField{Name: `time`, Ascending: true},
+				&influxql.OrderByField{Name: `field1`, Ascending: false},
+				&influxql.OrderByField{Name: `field2`, Ascending: false},
 			},
 			err: ``,
 		},
 	}
 
 	for i, test := range tests {
-		field, err := influxql.NewParser(strings.NewReader(test.s)).ParseOrderByField()
+		fields, err := influxql.NewParser(strings.NewReader(test.s)).ParseOrderByFields()
 		if !reflect.DeepEqual(test.err, errstring(err)) {
 			t.Errorf("%d. %q: error mismatch:\n  exp=%s\n  got=%s\n\n", i, test.s, test.err, err)
-		} else if test.err == "" && !reflect.DeepEqual(test.fields, field) {
-			t.Errorf("%d. %q\n\nexpr mismatch:\n\nexp=%#v\n\ngot=%#v\n\n", i, test.s, test.fields, field)
+		} else if test.err == "" && !reflect.DeepEqual(test.fields, fields) {
+			t.Errorf("%d. %q\n\nexpr mismatch:\n\nexp=%#v\n\ngot=%#v\n\n", i, test.s, test.fields, fields)
 		}
 	}
 }

@@ -183,6 +183,13 @@ func (p *Parser) parseListSeriesStatement() (*ListSeriesStatement, error) {
 	}
 	stmt.Limit = limit
 
+	// Parse OrderBy: "ORDER BY FIELD+"
+	orderBy, err := p.ParseOrderBy()
+	if err != nil {
+		return nil, err
+	}
+	stmt.OrderBy = orderBy
+
 	return stmt, nil
 }
 
@@ -504,9 +511,9 @@ func (p *Parser) ParseOrderByFields() (OrderByFields, error) {
 	// Parse additional ORDER BY fields.
 	for {
 		tok, _, _ := p.scanIgnoreWhitespace()
-		p.unscan()
 		
 		if tok != COMMA {
+			p.unscan()
 			break
 		}
 
